@@ -25,7 +25,7 @@ from optree import (
     tree_structure,
     tree_transpose_map,
 )
-
+import einx
 # from plum import dispatch, overload
 from xarray import DataArray
 
@@ -227,13 +227,21 @@ def inplace_add_at_location(
     location: Dict[str, slice],
     value: DataArray,
 ):
+    print("data dims:", data.dims)
+    print("data sizes:", data.sizes)
+
+    print("value dims:", value.dims)
+    print("value sizes:", value.sizes)
     data[find_common_slices(data, location)] += value
 
 
 @overload
 def infer(
+    self,
     input_tree: PyTree[DataArray | None],
     output_size_tree: PyTree[Dict[str, int]],
+    target_tree: PyTree[DataArray | None],
+    loss_func: Callable|None,
     func: Callable,
     patch_size: Dict[str, int],
     overlap: Dict[str, float],
@@ -252,6 +260,12 @@ def infer(
         input_tree,
         inner_treespec=tree_structure((1, 1)),
     )
+
+    # target_padded_tree, target_sizes_tree = tree_transpose_map(
+    #     lambda x: _pad_for_scaning_windows(x, patch_size, overlap),
+    #     target_tree,
+    #     inner_treespec=tree_structure((1, 1)),
+    # )
     # ic(pad_sizes_tree)
     pad_sizes = merge_dicts(pad_sizes_tree, _is_pad_size)
     input_padded_size = get_dim_size_dict_from_tree(
@@ -276,22 +290,43 @@ def infer(
         output_padded_size_tree,
         is_leaf=_is_named_size,
     )
+    # Loss = []
     for loc in patch_location:
         data = tree_map(
             lambda x: x.isel(loc, missing_dims="ignore"), input_padded_tree
         )
         data_device = _transfer_to_device(data, device)
-        result: PyTree[torch.Tensor] = func(data_device, *args, **kwargs)
+        result: PyTree[torch.Tensor] = func(data_device, *args, **kwargs) # Tensor type [1,1,5,320,320]
         output_dims = tree_map(lambda x: x.dims, output_padded_tree)
         result_merge_device = _transfer_to_device(
             result, merge_device, output_dims
-        )
+        ) # Dataarray type
+        # weights = data[-1]
+        # weights_device = _transfer_to_device(weights, device)
+        ##### Target ###########################
+        # target = tree_map(
+        #     lambda x: x.isel(loc, missing_dims="ignore"), target_padded_tree
+        # )
+        # target_device = _transfer_to_device(target, device)
+        # csm = data_device[2]
+        # kspace_traj = data_device[1]
+        # result_gpu = torch.squeeze(result.to("cuda:1"))
+        # kspace_traj_shrink = kspace_traj[:,:,1,:,:]
+        # csm = einx.rearrange("b z ch x y -> b ch z x y", csm, b=1)
+        # patch_loss = loss_func(self,result_gpu,csm, target_device,kspace_traj_shrink,weights_device)
+        # output_dims = tree_map(lambda x: x.dims, output_padded_tree)
+        # target_merge_device = _transfer_to_device(
+        #     target, merge_device, output_dims
+        # )
+        # self.log("validation_loss", patch_loss, on_step=True, on_epoch=False, prog_bar=True, logger=True)
+        ############ stitch patch ###################
         result_filtered = filter_func(result_merge_device, patch_size, overlap)
         output_padded_tree = tree_map_(
             lambda x, y: inplace_add_at_location(x, loc, y),
             output_padded_tree,
             result_filtered,
         )
+        # Loss.append(patch_loss)
     start_indices_tree = tree_map(
         lambda x: {k: pad_sizes.get(k, (0, 0))[0] for k in x.keys()},
         output_size_tree,
@@ -300,7 +335,9 @@ def infer(
     output_cropped = crop(
         output_padded_tree, start_indices_tree, output_size_tree
     )
+    # Val_loss = sum(Loss)/len(Loss)
     # ic(output_cropped[0].shape)
+    # return output_cropped, Val_loss
     return output_cropped
 
 
