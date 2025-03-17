@@ -240,8 +240,8 @@ def infer(
     self,
     input_tree: PyTree[DataArray | None],
     output_size_tree: PyTree[Dict[str, int]],
-    target_tree: PyTree[DataArray | None],
-    loss_func: Callable|None,
+    # target_tree: PyTree[DataArray | None],
+    #loss_func: Callable|None,
     func: Callable,
     patch_size: Dict[str, int],
     overlap: Dict[str, float],
@@ -254,19 +254,14 @@ def infer(
 ):
     """currently beartype doesn't support deep dict typing"""
     patch_dims = patch_size.keys()
-    # input_original_size = get_dim_size_dict_from_tree(input_tree, patch_dims)
+   
     input_padded_tree, pad_sizes_tree = tree_transpose_map(
         lambda x: _pad_for_scaning_windows(x, patch_size, overlap),
         input_tree,
         inner_treespec=tree_structure((1, 1)),
     )
 
-    # target_padded_tree, target_sizes_tree = tree_transpose_map(
-    #     lambda x: _pad_for_scaning_windows(x, patch_size, overlap),
-    #     target_tree,
-    #     inner_treespec=tree_structure((1, 1)),
-    # )
-    # ic(pad_sizes_tree)
+    
     pad_sizes = merge_dicts(pad_sizes_tree, _is_pad_size)
     input_padded_size = get_dim_size_dict_from_tree(
         input_padded_tree, patch_dims
@@ -290,11 +285,12 @@ def infer(
         output_padded_size_tree,
         is_leaf=_is_named_size,
     )
-    # Loss = []
+
     for loc in patch_location:
         data = tree_map(
             lambda x: x.isel(loc, missing_dims="ignore"), input_padded_tree
         )
+        # breakpoint()
         data_device = _transfer_to_device(data, device)
         result: PyTree[torch.Tensor] = func(data_device, *args, **kwargs) # Tensor type [1,1,5,320,320]
         output_dims = tree_map(lambda x: x.dims, output_padded_tree)
