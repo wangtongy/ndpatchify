@@ -240,11 +240,9 @@ def infer(
     self,
     input_tree: PyTree[DataArray | None],
     output_size_tree: PyTree[Dict[str, int]],
-    # target_tree: PyTree[DataArray | None],
-    #loss_func: Callable|None,
     func: Callable,
     patch_size: Dict[str, int],
-    overlap: Dict[str, float],
+    overlap: Dict[str, float] | Dict[str, int],
     filter_func: Callable,
     device: torch.device = torch.device("cpu"),
     merge_device: torch.device | XArrayDevice = "xarray",
@@ -254,7 +252,7 @@ def infer(
 ):
     """currently beartype doesn't support deep dict typing"""
     patch_dims = patch_size.keys()
-   
+    breakpoint()
     input_padded_tree, pad_sizes_tree = tree_transpose_map(
         lambda x: _pad_for_scaning_windows(x, patch_size, overlap),
         input_tree,
