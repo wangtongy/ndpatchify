@@ -252,7 +252,6 @@ def infer(
 ):
     """currently beartype doesn't support deep dict typing"""
     patch_dims = patch_size.keys()
-    breakpoint()
     input_padded_tree, pad_sizes_tree = tree_transpose_map(
         lambda x: _pad_for_scaning_windows(x, patch_size, overlap),
         input_tree,
